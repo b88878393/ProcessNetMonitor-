@@ -71,7 +71,7 @@
                               SelectionMode="Extended"
                               Margin="5">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="150"/>
+                            <DataGridTextColumn Header="Name" Binding="{Binding DisplayName}" Width="180"/>
                             <DataGridTextColumn Header="PID" Binding="{Binding ProcessId}" Width="60"/>
                             <DataGridTextColumn Header="Parent PID" Binding="{Binding ParentProcessId}" Width="80"/>
                             <DataGridTextColumn Header="User" Binding="{Binding UserName}" Width="120"/>
@@ -81,7 +81,8 @@
                             <DataGridTextColumn Header="Handles" Binding="{Binding HandleCount}" Width="70"/>
                             <DataGridTextColumn Header="Ports" Binding="{Binding PortsString}" Width="120"/>
                             <DataGridTextColumn Header="Started" Binding="{Binding StartTime, StringFormat='HH:mm:ss'}" Width="90"/>
-                            <DataGridTextColumn Header="Path" Binding="{Binding ExecutablePath}" Width="*"/>
+                            <DataGridTextColumn Header="Path" Binding="{Binding ExecutablePath}" Width="200"/>
+                            <DataGridTextColumn Header="Command Line" Binding="{Binding CommandLine}" Width="*"/>
                         </DataGrid.Columns>
                         <DataGrid.ContextMenu>
                             <ContextMenu>
@@ -129,23 +130,35 @@
                         <TextBlock Text="{Binding NetworkStatus}" VerticalAlignment="Center" Margin="10,0,0,0" FontWeight="Bold"/>
                     </StackPanel>
                     
-                    <!-- Traffic Chart Placeholder -->
-                    <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="5">
-                        <Grid>
-                            <TextBlock Text="Traffic Chart" HorizontalAlignment="Center" VerticalAlignment="Center" 
-                                       Opacity="0.3" FontSize="24"/>
-                            <ItemsControl ItemsSource="{Binding NetworkTrafficData}" Margin="5">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding ProcessName}" Width="150"/>
-                                            <TextBlock Text="{Binding UploadRate, StringFormat='↑ {0}'}" Width="100" Foreground="Green"/>
-                                            <TextBlock Text="{Binding DownloadRate, StringFormat='↓ {0}'}" Width="100" Foreground="Blue"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Grid>
+                    <!-- Live throughput (total + per-process) -->
+                    <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Margin="5" Padding="8">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="Total ↑ " FontWeight="Bold"/>
+                                <TextBlock Text="{Binding TotalUploadRate}" Foreground="#FF6A9955" Margin="0,0,16,0"/>
+                                <TextBlock Text="Total ↓ " FontWeight="Bold"/>
+                                <TextBlock Text="{Binding TotalDownloadRate}" Foreground="#FF569CD6" Margin="0,0,16,0"/>
+                                <TextBlock Text="Sent: " Opacity="0.7"/>
+                                <TextBlock Text="{Binding TotalBytesSentDisplay}" Margin="0,0,12,0"/>
+                                <TextBlock Text="Recv: " Opacity="0.7"/>
+                                <TextBlock Text="{Binding TotalBytesReceivedDisplay}"/>
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Bottom" Text="{Binding NpcapStatus}" Opacity="0.6" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding NetworkTrafficData}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                <TextBlock Text="{Binding ProcessName}" Width="160"/>
+                                                <TextBlock Text="{Binding ProcessId, StringFormat='PID {0}'}" Width="70" Opacity="0.7"/>
+                                                <TextBlock Text="{Binding UploadRate, StringFormat='↑ {0}'}" Width="110" Foreground="#FF6A9955"/>
+                                                <TextBlock Text="{Binding DownloadRate, StringFormat='↓ {0}'}" Width="110" Foreground="#FF569CD6"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
                     </Border>
                     
                     <!-- Filter Bar -->

@@ -3,6 +3,11 @@ namespace ProcessNetMonitor.Models;
 public class ProcessInfo
 {
     public string Name { get; set; } = string.Empty;
+    /// <summary>Name with optional tree indentation for display.</summary>
+    public string DisplayName => TreeDepth > 0
+        ? new string(' ', TreeDepth * 2) + "└ " + Name
+        : Name;
+    public int TreeDepth { get; set; }
     public int ProcessId { get; set; }
     public int ParentProcessId { get; set; }
     public string UserName { get; set; } = string.Empty;

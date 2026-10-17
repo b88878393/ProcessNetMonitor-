@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using ProcessNetMonitor.Core;
 using ProcessNetMonitor.Models;
 using ProcessNetMonitor.Services;
 
@@ -26,6 +27,10 @@ public class MainViewModel : INotifyPropertyChanged
     private string _statusText = "Ready";
     private ProcessInfo? _selectedProcess;
     private bool _networkLogPaused;
+    private long _totalBytesSent;
+    private long _totalBytesReceived;
+    private string _totalUploadRate = "0 B/s";
+    private string _totalDownloadRate = "0 B/s";
     
     public ObservableCollection<ProcessInfo> Processes { get; } = new();
     public ObservableCollection<ProcessInfo> FilteredProcesses { get; } = new();
@@ -122,26 +127,20 @@ public class MainViewModel : INotifyPropertyChanged
         if (evt.Direction == "Send")
         {
             traffic.TotalBytesSent += evt.Size;
-            traffic.UploadRate = FormatBytes(evt.Size) + "/s";
+            traffic.UploadRate = ByteFormatter.FormatRate(evt.Size);
+            _totalBytesSent += evt.Size;
+            TotalUploadRate = ByteFormatter.FormatRate(evt.Size);
         }
         else
         {
             traffic.TotalBytesReceived += evt.Size;
-            traffic.DownloadRate = FormatBytes(evt.Size) + "/s";
+            traffic.DownloadRate = ByteFormatter.FormatRate(evt.Size);
+            _totalBytesReceived += evt.Size;
+            TotalDownloadRate = ByteFormatter.FormatRate(evt.Size);
         }
-    }
-    
-    private string FormatBytes(long bytes)
-    {
-        string[] sizes = { "B", "KB", "MB", "GB" };
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len /= 1024;
-        }
-        return $"{len:0.##} {sizes[order]}";
+
+        OnPropertyChanged(nameof(TotalBytesSentDisplay));
+        OnPropertyChanged(nameof(TotalBytesReceivedDisplay));
     }
     
     private void RefreshProcesses()
@@ -169,44 +168,61 @@ public class MainViewModel : INotifyPropertyChanged
     private void ApplyProcessFilter()
     {
         FilteredProcesses.Clear();
-        
-        var filtered = Processes.AsEnumerable();
-        
-        if (!string.IsNullOrWhiteSpace(ProcessFilter))
+
+        var parsed = ProcessFilterParser.Parse(ProcessFilter);
+        IEnumerable<ProcessInfo> filtered = Processes.Where(p =>
+            ProcessFilterParser.Matches(
+                parsed,
+                p.Name,
+                p.ProcessId,
+                p.ExecutablePath,
+                p.CommandLine,
+                p.TcpPorts.Concat(p.UdpPorts)));
+
+        var list = filtered.ToList();
+        foreach (var p in list)
+            p.TreeDepth = 0;
+
+        if (ShowTreeView)
         {
-            var filter = ProcessFilter.ToLower();
-            
-            if (filter.StartsWith(":") || filter.StartsWith("port:"))
+            var byParent = list.GroupBy(p => p.ParentProcessId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(p => p.Name).ToList());
+            var pidSet = list.Select(p => p.ProcessId).ToHashSet();
+            var roots = list.Where(p => p.ParentProcessId == 0 || !pidSet.Contains(p.ParentProcessId))
+                .OrderBy(p => p.Name)
+                .ToList();
+
+            var ordered = new List<ProcessInfo>();
+            var visited = new HashSet<int>();
+
+            void Walk(ProcessInfo node, int depth)
             {
-                var portStr = filter.Replace("port:", "").Replace(":", "").Trim();
-                if (int.TryParse(portStr, out int port))
+                if (!visited.Add(node.ProcessId))
+                    return;
+                node.TreeDepth = depth;
+                ordered.Add(node);
+                if (byParent.TryGetValue(node.ProcessId, out var kids))
                 {
-                    filtered = filtered.Where(p =>
-                        p.TcpPorts.Contains(port) || p.UdpPorts.Contains(port));
+                    foreach (var kid in kids)
+                        Walk(kid, depth + 1);
                 }
             }
-            else if (filter.StartsWith("pid:"))
-            {
-                var pidStr = filter.Replace("pid:", "").Trim();
-                if (int.TryParse(pidStr, out int pid))
-                {
-                    filtered = filtered.Where(p => p.ProcessId == pid);
-                }
-            }
-            else
-            {
-                filtered = filtered.Where(p =>
-                    p.Name.ToLower().Contains(filter) ||
-                    p.ProcessId.ToString().Contains(filter) ||
-                    p.ExecutablePath.ToLower().Contains(filter) ||
-                    p.CommandLine.ToLower().Contains(filter));
-            }
+
+            foreach (var root in roots)
+                Walk(root, 0);
+
+            foreach (var p in list.Where(p => !visited.Contains(p.ProcessId)).OrderBy(p => p.Name))
+                Walk(p, 0);
+
+            list = ordered;
         }
-        
-        foreach (var process in filtered)
+        else
         {
+            list = list.OrderBy(p => p.Name).ToList();
+        }
+
+        foreach (var process in list)
             FilteredProcesses.Add(process);
-        }
     }
     
     private void ApplyNetworkFilter()
@@ -456,6 +472,12 @@ public class MainViewModel : INotifyPropertyChanged
         NetworkEvents.Clear();
         FilteredNetworkEvents.Clear();
         NetworkTrafficData.Clear();
+        _totalBytesSent = 0;
+        _totalBytesReceived = 0;
+        TotalUploadRate = "0 B/s";
+        TotalDownloadRate = "0 B/s";
+        OnPropertyChanged(nameof(TotalBytesSentDisplay));
+        OnPropertyChanged(nameof(TotalBytesReceivedDisplay));
     }
     
     private void ExportNetworkLog()
@@ -602,9 +624,26 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 _showTreeView = value;
                 OnPropertyChanged();
+                ApplyProcessFilter();
             }
         }
     }
+
+    public string TotalUploadRate
+    {
+        get => _totalUploadRate;
+        set { if (_totalUploadRate != value) { _totalUploadRate = value; OnPropertyChanged(); } }
+    }
+
+    public string TotalDownloadRate
+    {
+        get => _totalDownloadRate;
+        set { if (_totalDownloadRate != value) { _totalDownloadRate = value; OnPropertyChanged(); } }
+    }
+
+    public string TotalBytesSentDisplay => ByteFormatter.FormatBytes(_totalBytesSent);
+    public string TotalBytesReceivedDisplay => ByteFormatter.FormatBytes(_totalBytesReceived);
+    public string NpcapStatus => NpcapDetector.StatusMessage;
     
     public bool IsDarkTheme
     {

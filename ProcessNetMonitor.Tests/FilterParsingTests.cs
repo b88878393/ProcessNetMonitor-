@@ -1,82 +1,74 @@
+using ProcessNetMonitor.Core;
+
 namespace ProcessNetMonitor.Tests;
 
 public class FilterParsingTests
 {
-    [Fact]
-    public void ParsePortFilter_WithColon_ReturnsPort()
-    {
-        var filter = ":8080";
-        var isPortFilter = filter.StartsWith(":") || filter.StartsWith("port:");
-        
-        Assert.True(isPortFilter);
-        
-        var portStr = filter.Replace(":", "").Trim();
-        var success = int.TryParse(portStr, out int port);
-        
-        Assert.True(success);
-        Assert.Equal(8080, port);
-    }
-    
-    [Fact]
-    public void ParsePortFilter_WithPortPrefix_ReturnsPort()
-    {
-        var filter = "port:443";
-        var isPortFilter = filter.StartsWith(":") || filter.StartsWith("port:");
-        
-        Assert.True(isPortFilter);
-        
-        var portStr = filter.Replace("port:", "").Replace(":", "").Trim();
-        var success = int.TryParse(portStr, out int port);
-        
-        Assert.True(success);
-        Assert.Equal(443, port);
-    }
-    
-    [Fact]
-    public void ParsePidFilter_WithPidPrefix_ReturnsPid()
-    {
-        var filter = "pid:1234";
-        var isPidFilter = filter.StartsWith("pid:");
-        
-        Assert.True(isPidFilter);
-        
-        var pidStr = filter.Replace("pid:", "").Trim();
-        var success = int.TryParse(pidStr, out int pid);
-        
-        Assert.True(success);
-        Assert.Equal(1234, pid);
-    }
-    
-    [Fact]
-    public void FormatBytes_FormatsCorrectly()
-    {
-        Assert.Equal("0 B", FormatBytes(0));
-        Assert.Equal("1023 B", FormatBytes(1023));
-        Assert.Equal("1 KB", FormatBytes(1024));
-        Assert.Equal("1 MB", FormatBytes(1024 * 1024));
-        Assert.Equal("1.5 MB", FormatBytes((long)(1.5 * 1024 * 1024)));
-    }
-    
-    private string FormatBytes(long bytes)
-    {
-        string[] sizes = { "B", "KB", "MB", "GB" };
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len /= 1024;
-        }
-        return $"{len:0.##} {sizes[order]}";
-    }
-    
     [Theory]
-    [InlineData("chrome", "chrome.exe")]
-    [InlineData("chrome", "Google Chrome")]
-    [InlineData("1234", "1234")]
-    [InlineData("system", "SYSTEM")]
-    public void StringContains_CaseInsensitive(string filter, string text)
+    [InlineData(":8080", 8080)]
+    [InlineData("port:443", 443)]
+    [InlineData("PORT:80", 80)]
+    public void Parse_PortFilters(string input, int expectedPort)
     {
-        Assert.True(text.ToLower().Contains(filter.ToLower()));
+        var parsed = ProcessFilterParser.Parse(input);
+        Assert.Equal(ProcessFilterParser.FilterKind.Port, parsed.Kind);
+        Assert.Equal(expectedPort, parsed.Port);
+    }
+
+    [Fact]
+    public void Parse_PidFilter()
+    {
+        var parsed = ProcessFilterParser.Parse("pid:1234");
+        Assert.Equal(ProcessFilterParser.FilterKind.Pid, parsed.Kind);
+        Assert.Equal(1234, parsed.Pid);
+    }
+
+    [Fact]
+    public void Parse_TextFilter()
+    {
+        var parsed = ProcessFilterParser.Parse("chrome");
+        Assert.Equal(ProcessFilterParser.FilterKind.Text, parsed.Kind);
+        Assert.Equal("chrome", parsed.Text);
+    }
+
+    [Fact]
+    public void Matches_Port()
+    {
+        var filter = ProcessFilterParser.Parse(":8080");
+        Assert.True(ProcessFilterParser.Matches(filter, "app", 1, "", "", new[] { 8080, 443 }));
+        Assert.False(ProcessFilterParser.Matches(filter, "app", 1, "", "", new[] { 80 }));
+    }
+
+    [Fact]
+    public void Matches_Pid()
+    {
+        var filter = ProcessFilterParser.Parse("pid:42");
+        Assert.True(ProcessFilterParser.Matches(filter, "x", 42, "", "", Array.Empty<int>()));
+        Assert.False(ProcessFilterParser.Matches(filter, "x", 7, "", "", Array.Empty<int>()));
+    }
+
+    [Fact]
+    public void Matches_PathAndCommandLine()
+    {
+        var filter = ProcessFilterParser.Parse("widgets");
+        Assert.True(ProcessFilterParser.Matches(filter, "svc", 1, @"C:\tools\widgets.exe", "", Array.Empty<int>()));
+        Assert.True(ProcessFilterParser.Matches(filter, "svc", 1, "", "--name widgets", Array.Empty<int>()));
+        Assert.False(ProcessFilterParser.Matches(filter, "svc", 1, @"C:\other.exe", "--flag", Array.Empty<int>()));
+    }
+
+    [Theory]
+    [InlineData(0, "0 B")]
+    [InlineData(1023, "1023 B")]
+    [InlineData(1024, "1 KB")]
+    [InlineData(1048576, "1 MB")]
+    public void FormatBytes_FormatsCorrectly(long bytes, string expected)
+    {
+        Assert.Equal(expected, ByteFormatter.FormatBytes(bytes));
+    }
+
+    [Fact]
+    public void FormatRate_AppendsPerSecond()
+    {
+        Assert.Equal("1 KB/s", ByteFormatter.FormatRate(1024));
     }
 }
