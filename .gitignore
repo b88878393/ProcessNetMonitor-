@@ -482,10 +482,23 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local build / release artifacts (never commit binaries)
 artifacts/
-.dotnet-install.sh
+publish/
+*.exe
+*.zip
+*.zip.part*
+SHA256.txt
 dotnet-install.sh
+.dotnet-install.sh
+
+# Explicit project output folders
+**/bin/
+**/obj/
 ProcessNetMonitor/bin/
 ProcessNetMonitor/obj/
+ProcessNetMonitor.Core/bin/
+ProcessNetMonitor.Core/obj/
 ProcessNetMonitor.Tests/bin/
 ProcessNetMonitor.Tests/obj/
